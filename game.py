@@ -3,18 +3,37 @@ import random
 MAX_ATTEMPTS = 20
 VISIBLE_ROWS = 8
 
+
 def load_words():
-    with open("words.txt", "r") as file:
-        return [word.strip().upper() for word in file if len(word.strip()) == 5]
+    with open("words.txt", "r", encoding="utf-8") as file:
+        return list(dict.fromkeys(
+            word.strip().upper()
+            for word in file
+            if len(word.strip()) == 5 and word.strip().isalpha()
+        ))
+
+
+def load_answers():
+    with open("answers.txt", "r", encoding="utf-8") as file:
+        answers = list(dict.fromkeys(
+            word.strip().upper()
+            for word in file
+            if len(word.strip()) == 5 and word.strip().isalpha()
+        ))
+    if not answers:
+        raise ValueError("answers.txt has no valid answers")
+    return answers
+
 
 def new_game():
     return {
-        "secret": random.choice(load_words()),
+        "secret": random.choice(load_answers()),
         "attempts": 0,
         "history": [],
         "status": "playing",
         "reward": 0
     }
+
 
 def check_guess(secret, guess):
     secret = secret.upper()
@@ -38,6 +57,7 @@ def check_guess(secret, guess):
 
     return result
 
+
 def submit_guess(game, guess):
     if game["status"] != "playing":
         return "ended"
@@ -48,10 +68,8 @@ def submit_guess(game, guess):
         return "invalid"
 
     feedback = check_guess(game["secret"], guess)
-
     game["attempts"] += 1
     game["history"].append((guess, feedback))
-
     game["history"] = game["history"][-VISIBLE_ROWS:]
 
     if guess == game["secret"]:

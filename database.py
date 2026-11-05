@@ -65,3 +65,36 @@ def get_group_top(group_id, limit=10):
             ORDER BY diamonds DESC, name ASC
             LIMIT ?
         """, (group_id, limit)).fetchall()
+
+
+def get_wordle_mode(chat_id):
+    with sqlite3.connect(DB_NAME) as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS chat_settings (
+                chat_id INTEGER PRIMARY KEY,
+                wordle_mode TEXT NOT NULL DEFAULT 'image'
+            )
+        """)
+        row = con.execute(
+            "SELECT wordle_mode FROM chat_settings WHERE chat_id = ?",
+            (chat_id,)
+        ).fetchone()
+        return row[0] if row else "image"
+
+
+def set_wordle_mode(chat_id, mode):
+    if mode not in ("image", "normal"):
+        raise ValueError("Invalid Wordle mode")
+    with sqlite3.connect(DB_NAME) as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS chat_settings (
+                chat_id INTEGER PRIMARY KEY,
+                wordle_mode TEXT NOT NULL DEFAULT 'image'
+            )
+        """)
+        con.execute("""
+            INSERT INTO chat_settings (chat_id, wordle_mode)
+            VALUES (?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                wordle_mode = excluded.wordle_mode
+        """, (chat_id, mode))
