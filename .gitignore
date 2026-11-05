@@ -1,0 +1,8 @@
+.env
+*.db
+__pycache__/
+board.png
+words_alpha.txt
+words_backup.txt
+main_backup.py
+database_backup.py
