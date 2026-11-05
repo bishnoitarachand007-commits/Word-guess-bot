@@ -68,7 +68,12 @@ async def show_wordle_board(chat_id, context, game):
         ]
         for guess, feedback in game["history"]:
             squares = " ".join(FEEDBACK[item] for item in feedback)
-            lines.append(f"{squares} <b>{guess}</b>")
+            bold_guess = "".join(
+                chr(0x1D5D4 + ord(char) - ord("A"))
+                if "A" <= char <= "Z" else char
+                for char in guess.upper()
+            )
+            lines.append(f"{squares} {bold_guess}")
 
         if game["status"] == "won":
             lines.extend(["", "🎉 YOU WON!", f"Reward: 💎 {game['reward']}"])
@@ -83,8 +88,7 @@ async def show_wordle_board(chat_id, context, game):
 
         await context.bot.send_message(
             chat_id=chat_id,
-            text="\\n".join(lines),
-            parse_mode="HTML",
+            text="\n".join(lines),
             reply_markup=keyboard,
         )
         return
