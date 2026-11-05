@@ -63,37 +63,30 @@ async def show_wordle_board(chat_id, context, game):
     if game["mode"] == "normal":
         lines = [
             "WORDLE — Normal Mode",
-            "Guess the hidden 5-letter word.",
-            "🟩 Correct   🟨 Misplaced   🟥 Absent",
             f"Attempts: {game['attempts']}/20",
             "",
         ]
         for guess, feedback in game["history"]:
-            lines.append(" ".join(FEEDBACK[item] for item in feedback))
-            lines.append(guess)
+            squares = " ".join(FEEDBACK[item] for item in feedback)
+            lines.append(f"{squares} <b>{guess}</b>")
+
         if game["status"] == "won":
             lines.extend(["", "🎉 YOU WON!", f"Reward: 💎 {game['reward']}"])
         elif game["status"] == "lost":
             lines.extend(["", "GAME OVER", f"Word: {game['secret']}"])
-        keyboard = None
-        if game["status"] != "playing":
-            keyboard = wordle_menu_keyboard(game["mode"])
-        text = "\\n".join(lines)
-        message_id = game.get("message_id")
-        if message_id:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text,
-                reply_markup=keyboard,
-            )
-        else:
-            message = await context.bot.send_message(
-                chat_id=chat_id,
-                text=text,
-                reply_markup=keyboard,
-            )
-            game["message_id"] = message.message_id
+
+        keyboard = (
+            wordle_menu_keyboard(game["mode"])
+            if game["status"] != "playing"
+            else None
+        )
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="\\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
         return
 
     filename = save_board(
