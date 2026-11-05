@@ -30,6 +30,7 @@ def new_game():
         "secret": random.choice(load_answers()),
         "attempts": 0,
         "history": [],
+        "guessed_words": [],
         "status": "playing",
         "reward": 0
     }
@@ -67,8 +68,16 @@ def submit_guess(game, guess):
     if len(guess) != 5 or not guess.isalpha():
         return "invalid"
 
+    guessed_words = game.setdefault(
+        "guessed_words",
+        [previous for previous, _ in game["history"]],
+    )
+    if guess in guessed_words:
+        return "duplicate"
+
     feedback = check_guess(game["secret"], guess)
     game["attempts"] += 1
+    guessed_words.append(guess)
     game["history"].append((guess, feedback))
     game["history"] = game["history"][-VISIBLE_ROWS:]
 

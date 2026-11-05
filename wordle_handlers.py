@@ -16,7 +16,7 @@ from database import (
     set_wordle_mode,
 )
 from bot_common import games, is_game_active, send_main_menu
-from multi_games_ui import wordle_menu_keyboard, mode_keyboard
+from multi_games_ui import wordle_menu_keyboard, mode_keyboard, wordle_finished_keyboard
 
 DIAMOND_ID = "5298988357538328017"
 
@@ -80,17 +80,14 @@ async def show_wordle_board(chat_id, context, game):
         elif game["status"] == "lost":
             lines.extend(["", "GAME OVER", f"Word: {game['secret']}"])
 
-        keyboard = (
-            wordle_menu_keyboard(game["mode"])
-            if game["status"] != "playing"
-            else None
-        )
+        keyboard = wordle_finished_keyboard() if game["status"] != "playing" else None
 
-        await context.bot.send_message(
+        message = await context.bot.send_message(
             chat_id=chat_id,
             text="\n".join(lines),
             reply_markup=keyboard,
         )
+        game["message_id"] = message.message_id
         return
 
     filename = save_board(
@@ -121,11 +118,7 @@ async def show_wordle_board(chat_id, context, game):
     elif game["status"] == "lost":
         caption += f"\n\nGAME OVER\nWord: {game['secret']}"
 
-    keyboard = (
-        wordle_menu_keyboard(game["mode"])
-        if game["status"] != "playing"
-        else None
-    )
+    keyboard = wordle_finished_keyboard() if game["status"] != "playing" else None
 
     old_id = game.get("message_id")
     with open(filename, "rb") as photo:
@@ -214,6 +207,10 @@ async def handle_wordle_guess(update, context):
         return
 
     result = submit_guess(game, guess)
+
+    if result == "duplicate":
+        await update.message.reply_text("⚠️ This word has already been guessed. Try another word!")
+        return
 
     if result == "invalid":
         await update.message.reply_text("Please enter a valid 5-letter word.")

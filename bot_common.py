@@ -1,8 +1,11 @@
+import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from multi_games_ui import main_menu_keyboard
 
 games = {}
+menu_cooldowns = {}
+MENU_COOLDOWN_SECONDS = 120
 
 SUPPORT_GROUP_URL = "https://t.me/JarvisGamesChat"
 
@@ -49,3 +52,14 @@ async def send_intro(chat_id, context):
         text=INTRO_TEXT,
         reply_markup=await get_intro_keyboard(context),
     )
+
+
+def check_menu_cooldown(chat_id, user_id, action='games'):
+    now = time.monotonic()
+    key = (chat_id, user_id, action)
+    last_used = menu_cooldowns.get(key, 0)
+    remaining = MENU_COOLDOWN_SECONDS - (now - last_used)
+    if remaining > 0:
+        return int(remaining) + 1
+    menu_cooldowns[key] = now
+    return 0

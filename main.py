@@ -2,7 +2,7 @@ import os
 import asyncio
 
 from dotenv import load_dotenv
-from telegram import Update, MessageEntity
+from telegram import Update, MessageEntity, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,7 +19,7 @@ from database import (
     add_group_diamonds,
     get_group_top,
 )
-from bot_common import games, send_main_menu, send_intro
+from bot_common import games, send_main_menu, send_intro, check_menu_cooldown
 from wordle_handlers import (
     handle_wordle_callback,
     handle_wordle_guess,
@@ -46,7 +46,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type == "private":
         await send_intro(chat.id, context)
     else:
-        await send_main_menu(chat.id, context)
+        await update.message.reply_text("Use /games to open the game menu.")
 
 
 async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,7 +55,56 @@ async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type == "private":
         await send_intro(chat.id, context)
     else:
-        await send_main_menu(chat.id, context)
+        await update.message.reply_text("Use /games to open the game menu.")
+
+
+async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    user = update.effective_user
+    if chat.type == "private":
+        await send_intro(chat.id, context)
+        return
+    remaining = check_menu_cooldown(chat.id, user.id)
+    if remaining:
+        await update.message.reply_text(f"Please wait {remaining} seconds before opening the menu again.")
+        return
+    await send_main_menu(chat.id, context)
+
+
+async def end_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    user = update.effective_user
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("/end can only be used in a group.")
+        return
+    member = await context.bot.get_chat_member(chat.id, user.id)
+    if member.status not in ("administrator", "creator"):
+        await update.message.reply_text("Only group admins can use /end.")
+        return
+    game = games.get(chat.id)
+    if not game or game.get("status") not in ("playing", "waiting"):
+        await update.message.reply_text("There is no active game to end.")
+        return
+    game["status"] = "ended"
+    game_type = game.get("type")
+    callback = "ttt_restart" if game_type == "tictactoe" else "new_game"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("START NEW GAME", callback_data=callback, style="success")]])
+    message_id = game.get("message_id")
+    if message_id:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat.id, message_id=message_id,
+                text="Game ended by an admin.", reply_markup=keyboard
+            )
+        except Exception:
+            try:
+                await context.bot.edit_message_caption(
+                    chat_id=chat.id, message_id=message_id,
+                    caption="Game ended by an admin.", reply_markup=keyboard
+                )
+            except Exception as error:
+                print("Could not update ended game message:", error)
+    await update.message.reply_text("The active game has been ended by an admin.")
 
 
 def make_ranking(players, title):
@@ -124,7 +173,10 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
     members = update.message.new_chat_members
 
     if any(member.id == context.bot.id for member in members):
-        await send_main_menu(update.effective_chat.id, context)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Thanks for adding me! Use /games to open the game menu."
+        )
 
 
 async def callback_router(
@@ -132,6 +184,19 @@ async def callback_router(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     data = update.callback_query.data
+
+    if data in ("menu_wordle", "menu_sudoku", "menu_ttt"):
+        remaining = check_menu_cooldown(
+            update.callback_query.message.chat_id,
+            update.callback_query.from_user.id,
+            data,
+        )
+        if remaining:
+            await update.callback_query.answer(
+                f"Please wait {remaining} seconds before using this menu again.",
+                show_alert=True,
+            )
+            return
 
     if data.startswith(("menu_sudoku", "menu_ttt", "ttt_", "game_cancel")):
         await handle_multi_game_callback(update.callback_query, context)
@@ -165,6 +230,8 @@ async def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("new", new_command))
+    app.add_handler(CommandHandler("games", games_command))
+    app.add_handler(CommandHandler("end", end_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("globaltop", globaltop_command))
 

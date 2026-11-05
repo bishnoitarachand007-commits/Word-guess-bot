@@ -35,11 +35,12 @@ async def start_ttt(chat_id, user, context):
         return
 
     games[chat_id] = new_ttt_game(user.id, user.full_name)
-    await context.bot.send_message(
+    message = await context.bot.send_message(
         chat_id=chat_id,
         text=ttt_text(games[chat_id]),
         reply_markup=ttt_keyboard(games[chat_id]),
     )
+    games[chat_id]["message_id"] = message.message_id
 
 
 async def handle_multi_game_callback(query, context):
@@ -50,7 +51,7 @@ async def handle_multi_game_callback(query, context):
 
     if data == "menu_sudoku":
         await query.answer()
-        await start_sudoku(chat_id, user, context)
+        await context.bot.send_message(chat_id=chat_id, text="This game is still under maintenance.")
         return
 
     if data == "menu_ttt":
@@ -58,23 +59,18 @@ async def handle_multi_game_callback(query, context):
         await start_ttt(chat_id, user, context)
         return
 
-    if data == "game_cancel":
-        if not game or game.get("status") not in ("playing", "waiting"):
-            await query.answer("There is no active game.", show_alert=True)
+    if data == "ttt_restart":
+        if not game or game.get("type") != "tictactoe" or game.get("status") not in ("finished", "ended"):
+            await query.answer("This game has not finished yet.", show_alert=True)
             return
-        if game.get("type") == "sudoku" and user.id != game["owner"]:
-            await query.answer("Only the player who started Sudoku can cancel it.", show_alert=True)
-            return
-        if game.get("type") == "tictactoe" and user.id not in (game.get("x"), game.get("o")):
-            await query.answer("Only the players can cancel this game.", show_alert=True)
-            return
-        games[chat_id]["status"] = "finished"
-        await query.answer("Game cancelled.")
+        new_game = new_ttt_game(user.id, user.full_name)
+        new_game["message_id"] = query.message.message_id
+        games[chat_id] = new_game
+        await query.answer("New game started!")
         await query.edit_message_text(
-            "Game cancelled.",
-            reply_markup=None,
+            ttt_text(new_game),
+            reply_markup=ttt_keyboard(new_game),
         )
-        await send_main_menu(chat_id, context)
         return
 
     if data == "ttt_join":
@@ -143,57 +139,7 @@ async def handle_multi_game_callback(query, context):
         )
         return
 
-    if data == "main_menu":
-        if is_game_active(chat_id):
-            await query.answer("Finish or cancel the active game first.", show_alert=True)
-            return
-        await query.answer()
-        await send_main_menu(chat_id, context)
-        return
 
 
 async def handle_sudoku_text(update, context):
-    chat_id = update.effective_chat.id
-    game = games.get(chat_id)
-
-    if not game or game.get("type") != "sudoku" or game.get("status") != "playing":
-        return
-
-    parts = update.message.text.strip().split()
-    if len(parts) != 3 or not all(part.isdigit() for part in parts):
-        await update.message.reply_text(
-            "Enter your move as: row column number\\nExample: 1 3 4"
-        )
-        return
-
-    row, col, number = map(int, parts)
-    result = sudoku_move(game, update.effective_user.id, row, col, number)
-
-    messages = {
-        "not_owner": "Only the player who started Sudoku can make moves.",
-        "invalid": "Use row, column and number values from 1 to 9.",
-        "fixed": "That cell is part of the original puzzle.",
-        "occupied": "That cell is already filled.",
-        "wrong": "That number is not correct. Try again.",
-        "ended": "This Sudoku game has ended.",
-    }
-
-    if result in messages:
-        await update.message.reply_text(messages[result])
-        return
-
-    if result == "won":
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=game["message_id"],
-            text="Congratulations! You completed Sudoku.",
-            reply_markup=main_menu_keyboard(),
-        )
-        return
-
-    await context.bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=game["message_id"],
-        text=sudoku_text(game),
-        reply_markup=sudoku_keyboard(),
-    )
+    return
