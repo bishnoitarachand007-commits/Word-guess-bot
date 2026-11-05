@@ -100,34 +100,78 @@ async def show_board(chat_id, context, game):
             print("Old image could not be deleted:", e)
 
 
+SUPPORT_GROUP_URL = "https://t.me/JarvisGamesChat"
+
+INTRO_TEXT = (
+    "🎮 WORD GUESS — HOW TO PLAY\\n\\n"
+    "1. Guess the hidden 5-letter word.\\n"
+    "2. You get 20 attempts.\\n"
+    "3. 🟩 Correct: right letter, right place.\\n"
+    "4. 🟨 Present: letter is in the word, different place.\\n"
+    "5. ⬛ Absent: letter is not in the word.\\n\\n"
+    "Add me to your group, then send /start there to play! 💎"
+)
+
+async def get_intro_keyboard(context):
+    me = await context.bot.get_me()
+    add_url = f"https://t.me/{me.username}?startgroup=true"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Add me to group", url=add_url)],
+        [InlineKeyboardButton("💬 Support group", url=SUPPORT_GROUP_URL)],
+    ])
+
+async def send_intro(chat_id, context):
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=INTRO_TEXT,
+        reply_markup=await get_intro_keyboard(context),
+    )
+
+async def start_group_game(chat_id, context):
+    current = games.get(chat_id)
+    if current and current.get("status") == "playing":
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="🎮 Game already chal raha hai! Pehle current game complete karo."
+        )
+        return
+
+    games[chat_id] = new_game()
+    await show_board(chat_id, context, games[chat_id])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
+    chat = update.effective_chat
+    if chat.type == "private":
+        await send_intro(chat.id, context)
+        return
+    await start_group_game(chat.id, context)
 
-    old_id = games.get(chat_id, {}).get("message_id")
-    games[chat_id] = new_game()
+async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type == "private":
+        await update.message.reply_text(
+            "Pehle mujhe apne chat group mein add karo, phir group mein /new bhejo. 🎮",
+            reply_markup=await get_intro_keyboard(context),
+        )
+        return
+    await start_group_game(chat.id, context)
 
-    if old_id:
-        games[chat_id]["message_id"] = old_id
-
-    await show_board(chat_id, context, games[chat_id])
-
-
-async def new_game_button(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def new_game_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-
     chat_id = query.message.chat_id
-    old_id = games.get(chat_id, {}).get("message_id", query.message.message_id)
+    current = games.get(chat_id)
 
+    if current and current.get("status") == "playing":
+        await query.answer("Pehle current game complete karo!", show_alert=True)
+        return
+
+    await query.answer()
     games[chat_id] = new_game()
-    games[chat_id]["message_id"] = old_id
-
     await show_board(chat_id, context, games[chat_id])
 
-
+async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if any(member.id == context.bot.id for member in update.message.new_chat_members):
+        await send_intro(update.effective_chat.id, context)
 
 MEDALS = [
     "4978994451964757181",
@@ -258,11 +302,14 @@ async def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("new", start))
+    app.add_handler(CommandHandler("new", new_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("globaltop", globaltop_command))
     app.add_handler(
         CallbackQueryHandler(new_game_button, pattern="^new_game$")
+    )
+    app.add_handler(
+        MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added)
     )
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess)
