@@ -1,5 +1,5 @@
 import time
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 
 from multi_games_ui import main_menu_keyboard
 
@@ -9,11 +9,24 @@ MENU_COOLDOWN_SECONDS = 120
 
 SUPPORT_GROUP_URL = "https://t.me/JarvisGamesChat"
 
-INTRO_TEXT = (
-    "🎮 WELCOME TO THE GAME HUB!\n\n"
-    "Play Wordle, Sudoku, and Tic Tac Toe with your group.\n\n"
-    "Add me to your group and send /start to open the game menu."
-)
+WELCOME_EMOJI_ID = "5895425908973506277"
+HELP_EMOJI_ID = "5220108512893344933"
+
+def build_intro(user):
+    name = user.full_name or user.first_name or "Player"
+    text = f"Hello {name}! 🤔\nUse /help to know more about the bot. 🆘"
+
+    name_offset = len("Hello ".encode("utf-16-le")) // 2
+    name_length = len(name.encode("utf-16-le")) // 2
+    welcome_offset = len(f"Hello {name}! ".encode("utf-16-le")) // 2
+    help_offset = len(f"Hello {name}! 🤔\nUse /help to know more about the bot. ".encode("utf-16-le")) // 2
+
+    entities = [
+        MessageEntity(type=MessageEntity.TEXT_MENTION, offset=name_offset, length=name_length, user=user),
+        MessageEntity(type=MessageEntity.CUSTOM_EMOJI, offset=welcome_offset, length=2, custom_emoji_id=WELCOME_EMOJI_ID),
+        MessageEntity(type=MessageEntity.CUSTOM_EMOJI, offset=help_offset, length=2, custom_emoji_id=HELP_EMOJI_ID),
+    ]
+    return text, entities
 
 
 def is_game_active(chat_id):
@@ -46,10 +59,12 @@ async def get_intro_keyboard(context):
     ])
 
 
-async def send_intro(chat_id, context):
+async def send_intro(chat_id, context, user):
+    text, entities = build_intro(user)
     await context.bot.send_message(
         chat_id=chat_id,
-        text=INTRO_TEXT,
+        text=text,
+        entities=entities,
         reply_markup=await get_intro_keyboard(context),
     )
 

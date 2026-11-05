@@ -3,36 +3,50 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Wordle", callback_data="menu_wordle", style="success")],
-        [InlineKeyboardButton("Sudoku", callback_data="menu_sudoku", style="primary")],
-        [InlineKeyboardButton("Tic Tac Toe", callback_data="menu_ttt", style="success")],
+        [InlineKeyboardButton("Wordle", callback_data="menu_wordle", style="success", icon_custom_emoji_id="5298988357538328017")],
+        [InlineKeyboardButton("Sudoku", callback_data="menu_sudoku", style="primary", icon_custom_emoji_id="5895682417305325765")],
+        [InlineKeyboardButton("Tic Tac Toe", callback_data="menu_ttt", style="success", icon_custom_emoji_id="5361741454685256344")],
+        [InlineKeyboardButton("BACK", callback_data="intro_back", style="primary", icon_custom_emoji_id="5258236805890710909")],
     ])
 
 
 def wordle_menu_keyboard(mode):
-    mode_label = "Image Mode" if mode == "image" else "Normal Mode"
+    mode_label = "IMAGE MODE" if mode == "image" else "NORMAL MODE"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("CHANGE MODE", callback_data="wordle_modes", style="success")],
-        [InlineKeyboardButton("START NEW GAME", callback_data="new_game", style="primary")],
-        [InlineKeyboardButton(f"Current mode: {mode_label}", callback_data="wordle_modes", style="success")],
-        [InlineKeyboardButton("MAIN MENU", callback_data="main_menu", style="primary")],
+        [InlineKeyboardButton(
+            f"MODE: {mode_label}",
+            callback_data="toggle_mode",
+            style="success",
+            icon_custom_emoji_id="5258012149036365477",
+        )],
+        [InlineKeyboardButton(
+            "START NEW GAME",
+            callback_data="new_game",
+            style="primary",
+            icon_custom_emoji_id="5258508428212445001",
+        )],
+        [InlineKeyboardButton(
+            "BACK",
+            callback_data="main_menu",
+            style="primary",
+            icon_custom_emoji_id="5258236805890710909",
+        )],
     ])
 
 
 def wordle_finished_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("START NEW GAME", callback_data="new_game", style="success")]
+        [InlineKeyboardButton(
+            "START NEW GAME",
+            callback_data="new_game",
+            style="success",
+            icon_custom_emoji_id="5258508428212445001",
+        )]
     ])
 
 
 def mode_keyboard(mode):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(("✓ " if mode == "normal" else "") + "Normal Mode", callback_data="mode_normal", style="success"),
-            InlineKeyboardButton(("✓ " if mode == "image" else "") + "Image Mode", callback_data="mode_image", style="primary"),
-        ],
-        [InlineKeyboardButton("BACK", callback_data="menu_wordle", style="success")],
-    ])
+    return wordle_menu_keyboard(mode)
 
 
 def sudoku_text(game):
@@ -76,7 +90,7 @@ def ttt_keyboard(game):
         ])
     elif game["status"] == "finished":
         buttons.append([
-            InlineKeyboardButton("START NEW GAME", callback_data="ttt_restart", style="success")
+            InlineKeyboardButton("START NEW GAME", callback_data="ttt_restart", style="success", icon_custom_emoji_id="5258508428212445001")
         ])
     return InlineKeyboardMarkup(buttons)
 

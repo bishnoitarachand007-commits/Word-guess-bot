@@ -16,7 +16,7 @@ from database import (
     set_wordle_mode,
 )
 from bot_common import games, is_game_active, send_main_menu
-from multi_games_ui import wordle_menu_keyboard, mode_keyboard, wordle_finished_keyboard
+from multi_games_ui import wordle_menu_keyboard, wordle_finished_keyboard, main_menu_keyboard
 
 DIAMOND_ID = "5298988357538328017"
 
@@ -27,29 +27,16 @@ FEEDBACK = {
 }
 
 
-async def show_wordle_menu(chat_id, context):
-    mode = get_wordle_mode(chat_id)
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"WORDLE\n\nCurrent mode: {'Image Mode' if mode == 'image' else 'Normal Mode'}",
-        reply_markup=wordle_menu_keyboard(mode),
-    )
-
-
-async def show_mode_menu(query, chat_id):
+async def show_wordle_menu(query, chat_id):
     mode = get_wordle_mode(chat_id)
     await query.edit_message_text(
-        "Choose your Wordle mode.\nYour choice is saved until you change it.",
-        reply_markup=mode_keyboard(mode),
+        "WORDLE\\n\\nChoose your mode or start a new game.",
+        reply_markup=wordle_menu_keyboard(mode),
     )
 
 
 async def start_wordle(chat_id, context):
     if is_game_active(chat_id):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="A game is already active in this chat. Finish it before starting another.",
-        )
         return
 
     game = new_game()
@@ -148,44 +135,43 @@ async def handle_wordle_callback(query, context):
 
     if data == "menu_wordle":
         if is_game_active(chat_id):
-            await query.answer("Finish the active game first.", show_alert=True)
+            await query.answer()
             return
         await query.answer()
-        await show_wordle_menu(chat_id, context)
+        await show_wordle_menu(query, chat_id)
         return
 
-    if data == "wordle_modes":
+    if data == "toggle_mode":
         if is_game_active(chat_id):
-            await query.answer("Finish the active game before changing mode.", show_alert=True)
+            await query.answer()
             return
-        await query.answer()
-        await show_mode_menu(query, chat_id)
-        return
 
-    if data in ("mode_normal", "mode_image"):
-        if is_game_active(chat_id):
-            await query.answer("Finish the active game first.", show_alert=True)
-            return
-        mode = "normal" if data == "mode_normal" else "image"
+        current = get_wordle_mode(chat_id)
+        mode = "image" if current == "normal" else "normal"
         set_wordle_mode(chat_id, mode)
-        await query.answer("Mode saved.")
+        await query.answer("Mode changed.")
         await query.edit_message_text(
-            f"Wordle mode saved: {'Normal Mode' if mode == 'normal' else 'Image Mode'}",
+            "WORDLE\\n\\nChoose your mode or start a new game.",
             reply_markup=wordle_menu_keyboard(mode),
         )
         return
 
     if data == "new_game":
         await query.answer()
+        if is_game_active(chat_id):
+            return
         await start_wordle(chat_id, context)
         return
 
     if data == "main_menu":
         if is_game_active(chat_id):
-            await query.answer("Finish the active game before leaving it.", show_alert=True)
+            await query.answer()
             return
         await query.answer()
-        await send_main_menu(chat_id, context)
+        await query.edit_message_text(
+            "🎮 GAME MENU\\n\\nChoose a game:",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
 

@@ -7,6 +7,7 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    TypeHandler,
     CallbackQueryHandler,
     ContextTypes,
     filters,
@@ -24,6 +25,8 @@ from wordle_handlers import (
     handle_wordle_callback,
     handle_wordle_guess,
 )
+from admin_database import init_admin_db, record_user, record_chat
+from admin_handlers import admin_command_router
 from multi_game_handlers import (
     handle_multi_game_callback,
     handle_sudoku_text,
@@ -44,16 +47,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
 
     if chat.type == "private":
-        await send_intro(chat.id, context)
+        await send_intro(chat.id, context, update.effective_user)
     else:
         await update.message.reply_text("Use /games to open the game menu.")
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎮 GAME BOT HELP\n\n"
+        "/start - Open the welcome screen\n"
+        "/games - Open the game menu\n"
+        "/new - Open the welcome screen\n"
+        "/help - Show this help message\n"
+        "/top - View your group leaderboard\n"
+        "/globaltop - View the global leaderboard\n"
+        "/end - End an active group game (group admins only)"
+    )
 
 
 async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
 
     if chat.type == "private":
-        await send_intro(chat.id, context)
+        await send_intro(chat.id, context, update.effective_user)
     else:
         await update.message.reply_text("Use /games to open the game menu.")
 
@@ -62,7 +78,7 @@ async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
     if chat.type == "private":
-        await send_intro(chat.id, context)
+        await send_intro(chat.id, context, update.effective_user)
         return
     remaining = check_menu_cooldown(chat.id, user.id)
     if remaining:
@@ -220,21 +236,38 @@ async def text_router(
         await handle_wordle_guess(update, context)
 
 
+async def track_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if user and chat and chat.type == "private":
+        name = user.full_name or user.first_name or str(user.id)
+        record_user(user.id, name)
+
+    if chat and chat.type in ("group", "supergroup"):
+        title = chat.title or str(chat.id)
+        record_chat(chat.id, title, chat.type)
+
+
 async def main():
     if not TOKEN:
         raise RuntimeError("BOT_TOKEN is not configured.")
 
     init_db()
+    init_admin_db()
 
     app = Application.builder().token(TOKEN).build()
 
+    app.add_handler(TypeHandler(Update, track_activity), group=-1)
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("new", new_command))
     app.add_handler(CommandHandler("games", games_command))
     app.add_handler(CommandHandler("end", end_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("globaltop", globaltop_command))
 
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^!"), admin_command_router))
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(
         MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added)

@@ -11,10 +11,6 @@ from multi_games_ui import sudoku_text, sudoku_keyboard, ttt_text, ttt_keyboard,
 
 async def start_sudoku(chat_id, user, context):
     if is_game_active(chat_id):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="A game is already active in this chat. Finish it first.",
-        )
         return
 
     games[chat_id] = new_sudoku_game(user.id)
@@ -28,10 +24,6 @@ async def start_sudoku(chat_id, user, context):
 
 async def start_ttt(chat_id, user, context):
     if is_game_active(chat_id):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="A game is already active in this chat. Finish it first.",
-        )
         return
 
     games[chat_id] = new_ttt_game(user.id, user.full_name)
@@ -51,7 +43,10 @@ async def handle_multi_game_callback(query, context):
 
     if data == "menu_sudoku":
         await query.answer()
-        await context.bot.send_message(chat_id=chat_id, text="This game is still under maintenance.")
+        await query.edit_message_text(
+            "Sudoku is still under maintenance.",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
     if data == "menu_ttt":
@@ -61,7 +56,7 @@ async def handle_multi_game_callback(query, context):
 
     if data == "ttt_restart":
         if not game or game.get("type") != "tictactoe" or game.get("status") not in ("finished", "ended"):
-            await query.answer("This game has not finished yet.", show_alert=True)
+            await query.answer()
             return
         new_game = new_ttt_game(user.id, user.full_name)
         new_game["message_id"] = query.message.message_id
