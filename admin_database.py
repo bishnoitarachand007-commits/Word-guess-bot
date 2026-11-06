@@ -113,7 +113,7 @@ def get_stats():
             "SELECT COUNT(*) FROM bot_users WHERE blocked = 0"
         ).fetchone()[0]
         daily = con.execute(
-            "SELECT COUNT(*) FROM bot_users WHERE substr(last_seen, 1, 10) = ?",
+            "SELECT COUNT(*) FROM bot_users WHERE blocked = 0 AND substr(last_seen, 1, 10) = ?",
             (today,)
         ).fetchone()[0]
         groups = con.execute(

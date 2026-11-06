@@ -1,3 +1,4 @@
+from text_style import bold_text
 import os
 
 from telegram import (
@@ -9,6 +10,7 @@ from telegram import (
 
 from game import new_game, submit_guess, load_words
 from renderer import save_board
+from admin_database import record_user
 from database import (
     add_diamonds,
     add_group_diamonds,
@@ -49,8 +51,8 @@ async def start_wordle(chat_id, context):
 async def show_wordle_board(chat_id, context, game):
     if game["mode"] == "normal":
         lines = [
-            "WORDLE — Normal Mode",
-            f"Attempts: {game['attempts']}/20",
+            bold_text("WORDLE") + " — Normal Mode",
+            f"{bold_text('ATTEMPTS')}: {game['attempts']}/20",
             "",
         ]
         for guess, feedback in game["history"]:
@@ -63,9 +65,9 @@ async def show_wordle_board(chat_id, context, game):
             lines.append(f"{squares} {bold_guess}")
 
         if game["status"] == "won":
-            lines.extend(["", "🎉 YOU WON!", f"Reward: 💎 {game['reward']}"])
+            lines.extend(["", bold_text("🎉 YOU WON!"), f"{bold_text('REWARD')}: 💎 {game['reward']}"])
         elif game["status"] == "lost":
-            lines.extend(["", "GAME OVER", f"Word: {game['secret']}"])
+            lines.extend(["", bold_text("GAME OVER"), f"Word: {game['secret']}"])
 
         keyboard = wordle_finished_keyboard() if game["status"] != "playing" else None
 
@@ -81,7 +83,7 @@ async def show_wordle_board(chat_id, context, game):
         game["history"],
         filename=f"board_{chat_id}.png",
     )
-    caption = f"💎 WORD GUESS\nAttempts: {game['attempts']}/20"
+    caption = f"💎 " + bold_text("WORD GUESS") + f"\n{bold_text('ATTEMPTS')}: {game['attempts']}/20"
     entities = [
         MessageEntity(
             type="custom_emoji",
@@ -92,7 +94,7 @@ async def show_wordle_board(chat_id, context, game):
     ]
 
     if game["status"] == "won":
-        caption += f"\n\n🎉 YOU WON!\nReward: 💎 {game['reward']}"
+        caption += f"\n\n{bold_text('🎉 YOU WON!')}\n{bold_text('REWARD')}: 💎 {game['reward']}"
         offset = len(caption[:caption.rfind("💎")].encode("utf-16-le")) // 2
         entities.append(
             MessageEntity(
@@ -103,7 +105,7 @@ async def show_wordle_board(chat_id, context, game):
             )
         )
     elif game["status"] == "lost":
-        caption += f"\n\nGAME OVER\nWord: {game['secret']}"
+        caption += f"\n\n{bold_text('GAME OVER')}\nWord: {game['secret']}"
 
     keyboard = wordle_finished_keyboard() if game["status"] != "playing" else None
 
@@ -202,7 +204,10 @@ async def handle_wordle_guess(update, context):
         await update.message.reply_text("Please enter a valid 5-letter word.")
         return
 
-    await show_wordle_board(chat_id, context, game)
+    user = update.effective_user
+    if user and not user.is_bot and chat.type in ("group", "supergroup"):
+        name = user.full_name or user.first_name or str(user.id)
+        record_user(user.id, name)
 
     if result == "won":
         user = update.effective_user
@@ -216,6 +221,9 @@ async def handle_wordle_guess(update, context):
                 game["reward"],
             )
 
+    await show_wordle_board(chat_id, context, game)
+
+    if result == "won":
         try:
             await context.bot.set_message_reaction(
                 chat_id=chat_id,

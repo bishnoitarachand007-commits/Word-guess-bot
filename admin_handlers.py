@@ -51,6 +51,43 @@ async def admin_command_router(update: Update, context: ContextTypes.DEFAULT_TYP
     if not has_admin_access(user.id):
         return
 
+    if command == "!addd":
+        if not is_creator(user.id):
+            await message.reply_text("Only the Super Creator can add Wordle diamonds.")
+            return
+
+        target_message = message.reply_to_message
+        target = target_message.from_user if target_message else None
+
+        if not target or target.is_bot:
+            await message.reply_text(
+                "Kisi real user ke message par reply karke !addd AMOUNT bhejo."
+            )
+            return
+
+        parts = message.text.strip().split()
+        if len(parts) != 2:
+            await message.reply_text("Format: !addd AMOUNT\nExample: !addd 500")
+            return
+
+        try:
+            amount = int(parts[1])
+            if amount <= 0 or amount > 9223372036854775807:
+                raise ValueError
+        except ValueError:
+            await message.reply_text("Amount positive valid integer hona chahiye.")
+            return
+
+        from database import add_diamonds
+
+        name = target.full_name or target.first_name or str(target.id)
+        add_diamonds(target.id, name, amount)
+
+        await message.reply_text(
+            f"✅ {name} ko {amount:,} Wordle global diamonds add hue."
+        )
+        return
+
     if command in ("!sendall", "!senddm", "!sendchat", "!sendf"):
         if not message.reply_to_message:
             await message.reply_text(

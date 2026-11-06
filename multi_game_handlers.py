@@ -1,3 +1,6 @@
+import asyncio
+import uuid
+
 from bot_common import games, is_game_active, send_main_menu
 from multi_games import (
     new_sudoku_game,
@@ -22,17 +25,58 @@ async def start_sudoku(chat_id, user, context):
     games[chat_id]["message_id"] = message.message_id
 
 
+async def ttt_wait_timeout(context, chat_id, message_id, token):
+    try:
+        await asyncio.sleep(60)
+    except asyncio.CancelledError:
+        return
+
+    game = games.get(chat_id)
+    if (
+        not game
+        or game.get("type") != "tictactoe"
+        or game.get("status") != "waiting"
+        or game.get("wait_token") != token
+    ):
+        return
+
+    game["status"] = "ended"
+    game["end_reason"] = "join_timeout"
+    game["waiting_task"] = None
+
+    await context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=message_id,
+        text=ttt_text(game),
+        reply_markup=ttt_keyboard(game),
+    )
+
+
+def cancel_ttt_wait(game):
+    task = game.get("waiting_task")
+    if task and not task.done():
+        task.cancel()
+    game["waiting_task"] = None
+
+
 async def start_ttt(chat_id, user, context):
     if is_game_active(chat_id):
         return
 
-    games[chat_id] = new_ttt_game(user.id, user.full_name)
+    game = new_ttt_game(user.id, user.full_name)
+    game["wait_token"] = uuid.uuid4().hex
+    games[chat_id] = game
     message = await context.bot.send_message(
         chat_id=chat_id,
         text=ttt_text(games[chat_id]),
         reply_markup=ttt_keyboard(games[chat_id]),
     )
     games[chat_id]["message_id"] = message.message_id
+    game["waiting_task"] = asyncio.create_task(
+        ttt_wait_timeout(
+            context, chat_id, message.message_id, game["wait_token"]
+        )
+    )
 
 
 async def handle_multi_game_callback(query, context):
@@ -58,13 +102,23 @@ async def handle_multi_game_callback(query, context):
         if not game or game.get("type") != "tictactoe" or game.get("status") not in ("finished", "ended"):
             await query.answer()
             return
+        cancel_ttt_wait(game)
         new_game = new_ttt_game(user.id, user.full_name)
+        new_game["wait_token"] = uuid.uuid4().hex
         new_game["message_id"] = query.message.message_id
         games[chat_id] = new_game
         await query.answer("New game started!")
         await query.edit_message_text(
             ttt_text(new_game),
             reply_markup=ttt_keyboard(new_game),
+        )
+        new_game["waiting_task"] = asyncio.create_task(
+            ttt_wait_timeout(
+                context,
+                chat_id,
+                query.message.message_id,
+                new_game["wait_token"],
+            )
         )
         return
 
@@ -81,6 +135,7 @@ async def handle_multi_game_callback(query, context):
             await query.answer("This game has already started.", show_alert=True)
             return
 
+        cancel_ttt_wait(game)
         await query.answer("You joined as O!")
         await query.edit_message_text(
             ttt_text(game),

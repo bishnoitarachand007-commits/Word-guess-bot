@@ -1,8 +1,9 @@
 import os
+from text_style import bold_text
 import asyncio
 
 from dotenv import load_dotenv
-from telegram import Update, MessageEntity, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, User, MessageEntity, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,6 +20,12 @@ from database import (
     get_top,
     add_group_diamonds,
     get_group_top,
+    get_higher_lower_top,
+    get_higher_lower_group_top,
+    get_wordle_profile,
+    get_wordle_group_profile,
+    get_higher_lower_profile,
+    get_higher_lower_group_profile,
 )
 from bot_common import games, send_main_menu, send_intro, check_menu_cooldown
 from wordle_handlers import (
@@ -30,6 +37,11 @@ from admin_handlers import admin_command_router
 from multi_game_handlers import (
     handle_multi_game_callback,
     handle_sudoku_text,
+    cancel_ttt_wait,
+)
+from higher_lower_handlers import (
+    handle_higher_lower_callback,
+    handle_higher_lower_text,
 )
 
 load_dotenv()
@@ -101,9 +113,16 @@ async def end_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not game or game.get("status") not in ("playing", "waiting"):
         await update.message.reply_text("There is no active game to end.")
         return
-    game["status"] = "ended"
     game_type = game.get("type")
-    callback = "ttt_restart" if game_type == "tictactoe" else "new_game"
+    if game_type == "tictactoe":
+        cancel_ttt_wait(game)
+    game["status"] = "ended"
+    if game_type == "tictactoe":
+        callback = "ttt_restart"
+    elif game_type == "higher_lower":
+        callback = "hl_restart"
+    else:
+        callback = "new_game"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("START NEW GAME", callback_data=callback, style="success")]])
     message_id = game.get("message_id")
     if message_id:
@@ -144,16 +163,29 @@ def make_ranking(players, title):
         )
 
     add_custom("💎", DIAMOND_ID)
-    add(f" {title}\n\n")
+    add(f" {bold_text(title)}\n\n")
 
-    for i, (name, diamonds) in enumerate(players, 1):
+    for i, (user_id, name, diamonds) in enumerate(players, 1):
         if i <= 3:
             add_custom(["🥇", "🥈", "🥉"][i - 1], MEDALS[i - 1])
         else:
             add(f"{i}.")
 
-        safe_name = name.replace("\n", " ").replace("\r", " ")
-        add(f" {safe_name} — ")
+        add(" ")
+        safe_name = (name or "Player").replace("\n", " ").replace("\r", " ")
+        offset = len(text.encode("utf-16-le")) // 2
+        add(safe_name)
+
+        entities.append(
+            MessageEntity(
+                type="text_mention",
+                offset=offset,
+                length=len(safe_name.encode("utf-16-le")) // 2,
+                user=User(id=user_id, first_name=safe_name, is_bot=False),
+            )
+        )
+
+        add(" — ")
         add_custom("💎", DIAMOND_ID)
         add(f" {diamonds}\n")
 
@@ -169,8 +201,21 @@ async def send_ranking(update, players, title):
     await update.message.reply_text(text, entities=entities)
 
 
+def leaderboard_keyboard(scope):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Wordle", callback_data=f"lb_{scope}_wordle"),
+            InlineKeyboardButton("Higher / Lower", callback_data=f"lb_{scope}_hl"),
+        ],
+        [InlineKeyboardButton("Back", callback_data="lb_back")],
+    ])
+
+
 async def globaltop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_ranking(update, get_top(10), "GLOBAL TOP 10")
+    await update.message.reply_text(
+        f"🏆 {bold_text('GLOBAL LEADERBOARD')}\n\nChoose a game:",
+        reply_markup=leaderboard_keyboard("global"),
+    )
 
 
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,7 +227,159 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await send_ranking(update, get_group_top(chat.id, 10), "GROUP TOP 10")
+    await update.message.reply_text(
+        f"🏆 {bold_text('GROUP LEADERBOARD')}\n\nChoose a game:",
+        reply_markup=leaderboard_keyboard("group"),
+    )
+
+
+async def leaderboard_callback(query):
+    data = query.data
+
+    if data == "lb_back":
+        await query.answer()
+        await query.edit_message_text("Leaderboard menu closed.")
+        return
+
+    if data in ("lb_menu_global", "lb_menu_group"):
+        scope = data.removeprefix("lb_menu_")
+        title = "GLOBAL LEADERBOARD" if scope == "global" else "GROUP LEADERBOARD"
+        await query.answer()
+        await query.edit_message_text(
+            f"🏆 {bold_text(title)}\n\nChoose a game:",
+            reply_markup=leaderboard_keyboard(scope),
+        )
+        return
+
+    parts = data.split("_")
+    if len(parts) != 3 or parts[0] != "lb":
+        await query.answer("Invalid leaderboard option.", show_alert=True)
+        return
+
+    scope, game = parts[1], parts[2]
+    chat_id = query.message.chat_id
+
+    if scope == "global":
+        if game == "wordle":
+            players, title = get_top(10), "GLOBAL WORDLE TOP 10"
+        elif game == "hl":
+            players, title = get_higher_lower_top(10), "GLOBAL HIGHER / LOWER TOP 10"
+        else:
+            await query.answer("Unknown game.", show_alert=True)
+            return
+    elif scope == "group":
+        if game == "wordle":
+            players, title = get_group_top(chat_id, 10), "GROUP WORDLE TOP 10"
+        elif game == "hl":
+            players, title = get_higher_lower_group_top(chat_id, 10), "GROUP HIGHER / LOWER TOP 10"
+        else:
+            await query.answer("Unknown game.", show_alert=True)
+            return
+    else:
+        await query.answer("Invalid leaderboard.", show_alert=True)
+        return
+
+    await query.answer()
+
+    back_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "⬅️ Back to Games",
+            callback_data=f"lb_menu_{scope}",
+        )]
+    ])
+
+    if not players:
+        await query.edit_message_text(
+            "This leaderboard is empty.",
+            reply_markup=back_keyboard,
+        )
+        return
+
+    ranking_text, entities = make_ranking(players, title)
+    await query.edit_message_text(
+        text=ranking_text,
+        entities=entities,
+        reply_markup=back_keyboard,
+    )
+
+
+def profile_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Wordle", callback_data="profile_wordle"),
+            InlineKeyboardButton("Higher / Lower", callback_data="profile_hl"),
+        ]
+    ])
+
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👤 YOUR PROFILE\n\nChoose a game:",
+        reply_markup=profile_keyboard(),
+    )
+
+
+async def profile_callback(query):
+    data = query.data
+    user_id = query.from_user.id
+    chat = query.message.chat
+
+    if data == "profile_back":
+        await query.answer()
+        await query.edit_message_text(
+            "👤 YOUR PROFILE\n\nChoose a game:",
+            reply_markup=profile_keyboard(),
+        )
+        return
+
+    if data == "profile_wordle":
+        game_name = "Wordle"
+        global_stats = get_wordle_profile(user_id)
+        group_stats = (
+            get_wordle_group_profile(chat.id, user_id)
+            if chat.type in ("group", "supergroup") else None
+        )
+    elif data == "profile_hl":
+        game_name = "Higher / Lower"
+        global_stats = get_higher_lower_profile(user_id)
+        group_stats = (
+            get_higher_lower_group_profile(chat.id, user_id)
+            if chat.type in ("group", "supergroup") else None
+        )
+    else:
+        await query.answer("Invalid profile option.", show_alert=True)
+        return
+
+    def format_stats(stats):
+        if stats is None:
+            return "0 diamonds | Unranked"
+        return f"{stats['diamonds']:,} diamonds | Rank #{stats['rank']}"
+
+    lines = [
+        f"👤 {query.from_user.full_name}'s {game_name} Profile",
+        "",
+        f"🌍 Global: {format_stats(global_stats)}",
+    ]
+
+    if chat.type in ("group", "supergroup"):
+        lines.append(f"👥 This group: {format_stats(group_stats)}")
+    else:
+        lines.append("👥 Group stats: Use /profile inside a group to view them.")
+
+    lines.extend([
+        "",
+        "🏘️ Distinct groups played: Not tracked yet",
+    ])
+
+    back_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Back to Games", callback_data="profile_back")]
+    ])
+
+    await query.answer()
+    await query.edit_message_text(
+        "\n".join(lines),
+        reply_markup=back_keyboard,
+    )
 
 
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -201,7 +398,7 @@ async def callback_router(
 ):
     data = update.callback_query.data
 
-    if data in ("menu_wordle", "menu_sudoku", "menu_ttt"):
+    if data in ("menu_wordle", "menu_sudoku", "menu_ttt", "menu_higher_lower"):
         remaining = check_menu_cooldown(
             update.callback_query.message.chat_id,
             update.callback_query.from_user.id,
@@ -214,7 +411,13 @@ async def callback_router(
             )
             return
 
-    if data.startswith(("menu_sudoku", "menu_ttt", "ttt_", "game_cancel")):
+    if data.startswith("profile_"):
+        await profile_callback(update.callback_query)
+    elif data.startswith("lb_"):
+        await leaderboard_callback(update.callback_query)
+    elif data.startswith(("menu_higher_lower", "hl_")):
+        await handle_higher_lower_callback(update.callback_query, context)
+    elif data.startswith(("menu_sudoku", "menu_ttt", "ttt_", "game_cancel")):
         await handle_multi_game_callback(update.callback_query, context)
     else:
         await handle_wordle_callback(update.callback_query, context)
@@ -234,13 +437,33 @@ async def text_router(
         await handle_sudoku_text(update, context)
     elif game.get("type") == "wordle":
         await handle_wordle_guess(update, context)
+    elif game.get("type") == "higher_lower":
+        await handle_higher_lower_text(update, context)
 
 
 async def track_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
 
-    if user and chat and chat.type == "private":
+    # Count private interactions and intentional group interactions only.
+    should_track = bool(chat and chat.type == "private")
+
+    if chat and chat.type in ("group", "supergroup"):
+        message = update.effective_message
+        is_group_command = bool(
+            message and any(
+                entity.type == "bot_command"
+                for entity in (message.entities or [])
+            )
+        )
+        is_admin_command = bool(
+            message and message.text and message.text.strip().startswith("!")
+        )
+        should_track = bool(
+            update.callback_query or is_group_command or is_admin_command
+        )
+
+    if user and not user.is_bot and should_track:
         name = user.full_name or user.first_name or str(user.id)
         record_user(user.id, name)
 
@@ -263,6 +486,7 @@ async def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("new", new_command))
     app.add_handler(CommandHandler("games", games_command))
+    app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("end", end_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("globaltop", globaltop_command))

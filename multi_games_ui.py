@@ -1,9 +1,11 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from text_style import bold_text
 
 
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Wordle", callback_data="menu_wordle", style="success", icon_custom_emoji_id="5298988357538328017")],
+        [InlineKeyboardButton("Higher / Lower 🎯", callback_data="menu_higher_lower", style="success")],
         [InlineKeyboardButton("Sudoku", callback_data="menu_sudoku", style="primary", icon_custom_emoji_id="5895682417305325765")],
         [InlineKeyboardButton("Tic Tac Toe", callback_data="menu_ttt", style="success", icon_custom_emoji_id="5361741454685256344")],
         [InlineKeyboardButton("BACK", callback_data="intro_back", style="primary", icon_custom_emoji_id="5258236805890710909")],
@@ -50,7 +52,7 @@ def mode_keyboard(mode):
 
 
 def sudoku_text(game):
-    lines = ["SUDOKU — Fill in the missing numbers", ""]
+    lines = [bold_text("SUDOKU") + " — Fill in the missing numbers", ""]
     for r, row in enumerate(game["grid"]):
         if r in (3, 6):
             lines.append("------+-------+------")
@@ -88,7 +90,7 @@ def ttt_keyboard(game):
         buttons.append([
             InlineKeyboardButton("JOIN AS O", callback_data="ttt_join", style="success")
         ])
-    elif game["status"] == "finished":
+    elif game["status"] in ("finished", "ended"):
         buttons.append([
             InlineKeyboardButton("START NEW GAME", callback_data="ttt_restart", style="success", icon_custom_emoji_id="5258508428212445001")
         ])
@@ -97,12 +99,47 @@ def ttt_keyboard(game):
 
 def ttt_text(game):
     if game["status"] == "waiting":
-        return f"TIC TAC TOE\n\n❌: {game['x_name']}\nWaiting for another player to join as ⭕."
+        return f"{bold_text('TIC TAC TOE')}\n\n❌: {game['x_name']}\nWaiting for another player to join as ⭕."
+    if game["status"] == "ended":
+        if game.get("end_reason") == "join_timeout":
+            return f"{bold_text('TIC TAC TOE')}\n\nNobody joined in 60 seconds."
+        return f"{bold_text('TIC TAC TOE')}\n\n{bold_text('GAME ENDED')}."
+
     if game["status"] == "finished":
         if game["winner"]:
             winner_name = game["x_name"] if game["winner"] == "X" else game["o_name"]
-            return f"TIC TAC TOE\n\n{winner_name} wins!"
-        return "TIC TAC TOE\n\nIt is a draw!"
+            return f"{bold_text('TIC TAC TOE')}\n\n{winner_name} {bold_text('WINS!')}"
+        return f"{bold_text('TIC TAC TOE')}\n\n{bold_text('IT IS A DRAW!')}"
     turn_name = game["x_name"] if game["turn"] == "X" else game["o_name"]
     symbol = "❌" if game["turn"] == "X" else "⭕"
-    return f"TIC TAC TOE\n\n❌: {game['x_name']}\n⭕: {game['o_name']}\n\nTurn: {symbol} — {turn_name}"
+    return f"{bold_text('TIC TAC TOE')}\n\n❌: {game['x_name']}\n⭕: {game['o_name']}\n\n{bold_text('TURN')}: {symbol} — {turn_name}"
+
+
+def higher_lower_text(game):
+    if game["status"] == "finished":
+        return (
+            bold_text("🎯 HIGHER / LOWER") + "\n\n"
+            f"🏆 {bold_text('WINNER')}: {game.get('winner_name', 'Player')}\n"
+            f"{bold_text('CORRECT NUMBER')}: {game['secret']}\n"
+            f"{bold_text('ATTEMPTS')}: {game['attempts'][game['winner']]}\n"
+            f"{bold_text('REWARD')}: 💎 {game['reward']} diamonds"
+        )
+
+    return (
+        bold_text("🎯 HIGHER / LOWER") + "\n\n"
+        "I'm thinking of a number between 1 and 500.\n"
+        "Send a number in the group to guess.\n\n"
+        "⬆️ = Go Higher\n"
+        "⬇️ = Go Lower"
+    )
+
+
+def higher_lower_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "START NEW GAME",
+            callback_data="hl_restart",
+            style="success",
+            icon_custom_emoji_id="5258508428212445001",
+        )]
+    ])
