@@ -42,6 +42,7 @@ from multi_game_handlers import (
 )
 import nox_handlers as nox
 import nox_miniapp_server as nox_web
+from nox_database import create_tables as create_nox_tables
 
 from higher_lower_handlers import (
     handle_higher_lower_callback,
@@ -485,6 +486,7 @@ async def main():
 
     init_db()
     init_admin_db()
+    create_nox_tables()
 
     app = Application.builder().token(TOKEN).build()
 
