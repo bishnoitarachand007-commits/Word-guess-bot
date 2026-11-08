@@ -330,12 +330,16 @@ async def start_turn(bot, game_id):
         game["turn_id"] += 1
         game["turn_active"] = True
         turn_id = game["turn_id"]
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
                 "Open private cards",
                 callback_data=f"nox_turn:{game_id}:{turn_id}"
-            )
-        ]])
+            )],
+            [InlineKeyboardButton(
+                "Open NOX Mini App",
+                url=f"https://t.me/Mrs_Friday_game_bot?startapp={game_id}"
+            )]
+        ])
         try:
             await bot.send_message(
                 game["group_id"],
