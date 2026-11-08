@@ -1,6 +1,7 @@
 import os
 from text_style import bold_text
 import asyncio
+from aiohttp import web
 
 from dotenv import load_dotenv
 from telegram import Update, User, MessageEntity, InlineKeyboardButton, InlineKeyboardMarkup
@@ -39,6 +40,9 @@ from multi_game_handlers import (
     handle_sudoku_text,
     cancel_ttt_wait,
 )
+import nox_handlers as nox
+import nox_miniapp_server as nox_web
+
 from higher_lower_handlers import (
     handle_higher_lower_callback,
     handle_higher_lower_text,
@@ -397,6 +401,9 @@ async def callback_router(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     data = update.callback_query.data
+    if data.startswith(("nox_turn:", "nox_card:", "nox_join:", "nox_hoststart:")):
+        await nox.nox_callback(update, context)
+        return
 
     if data in ("menu_wordle", "menu_sudoku", "menu_ttt", "menu_higher_lower"):
         remaining = check_menu_cooldown(
@@ -490,6 +497,21 @@ async def main():
     app.add_handler(CommandHandler("end", end_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("globaltop", globaltop_command))
+    app.add_handler(CommandHandler("noxnew", nox.nox_new))
+    app.add_handler(CommandHandler("noxtournament", nox.nox_tournament))
+    app.add_handler(CommandHandler("noxjoin", nox.nox_join))
+    app.add_handler(CommandHandler("noxleave", nox.nox_leave))
+    app.add_handler(CommandHandler("noxstartgame", nox.nox_start_game))
+    app.add_handler(CommandHandler("noxgameend", nox.nox_game_end))
+    app.add_handler(CommandHandler("noxcancel", nox.nox_cancel))
+    app.add_handler(CommandHandler("noxwallet", nox.nox_wallet))
+    app.add_handler(CommandHandler("noxpay", nox.nox_pay))
+    app.add_handler(CommandHandler("noxdaily", nox.nox_daily))
+    app.add_handler(CommandHandler("noxclaim", nox.nox_claim))
+    app.add_handler(CommandHandler("noxtoprich", nox.nox_toprich))
+    app.add_handler(CommandHandler("noxglobaltoprich", nox.nox_globaltoprich))
+    app.add_handler(CommandHandler("noxstats", nox.nox_stats))
+    app.add_handler(CommandHandler("noxreset", nox.nox_reset))
 
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^!"), admin_command_router))
     app.add_handler(CallbackQueryHandler(callback_router))
@@ -500,18 +522,44 @@ async def main():
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_router)
     )
 
-    print("Game bot is running...")
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
+    runner = None
+    initialized = False
+    started = False
+    polling = False
 
     try:
+        await app.initialize()
+        initialized = True
+
+        await app.start()
+        started = True
+
+        web_app = nox_web.build_web_app(
+            app.bot,
+            nox.ACTIVE_GAMES,
+            nox.process_card_pass,
+            TOKEN,
+        )
+        runner = web.AppRunner(web_app)
+        await runner.setup()
+        port = int(os.environ.get("PORT", "3000"))
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+
+        await app.updater.start_polling()
+        polling = True
+        print("Telegram bot and NOX Mini App backend are running.")
+
         await asyncio.Event().wait()
     finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+        if polling:
+            await app.updater.stop()
+        if runner is not None:
+            await runner.cleanup()
+        if started:
+            await app.stop()
+        if initialized:
+            await app.shutdown()
 
 
 if __name__ == "__main__":

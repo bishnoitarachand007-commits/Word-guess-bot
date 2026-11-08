@@ -6,3 +6,12 @@ words_alpha.txt
 words_backup.txt
 main_backup.py
 database_backup.py
+
+# Local backups and sensitive runtime files
+*.before_*
+*_before_*.py
+*_backup.py
+*_backup/
+*.session
+*.session-journal
+*.log

@@ -5,7 +5,7 @@ from multi_games_ui import main_menu_keyboard
 
 games = {}
 menu_cooldowns = {}
-MENU_COOLDOWN_SECONDS = 120
+MENU_COOLDOWN_SECONDS = 0
 
 SUPPORT_GROUP_URL = "https://t.me/JarvisGamesChat"
 
